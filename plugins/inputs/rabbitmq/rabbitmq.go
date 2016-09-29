@@ -3,15 +3,14 @@ package rabbitmq
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
 	"sync"
+  "net/http"
 	"time"
-
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
 	"github.com/influxdata/telegraf/internal/errchan"
 	"github.com/influxdata/telegraf/plugins/inputs"
+	"strconv"
 )
 
 // DefaultUsername will set a default value that corrasponds to the default
@@ -221,10 +220,39 @@ func (r *RabbitMQ) requestJSON(u string, target interface{}) error {
 	}
 
 	defer resp.Body.Close()
-
 	json.NewDecoder(resp.Body).Decode(target)
 
 	return nil
+}
+
+func getOldRabbitCounts(r *RabbitMQ) (*ObjectTotals, error){
+  //old rabbit nodes do not have this information available
+  apiEndPoints := map[string]string{
+    "channels":"/api/channels",
+    "connections":"/api/connections",
+    "exchanges":"/api/exchanges",
+    "queues":"/api/queues"}
+
+  totals := map[string]int64{}
+  object_totals := ObjectTotals{}
+
+  for index, endpoint := range apiEndPoints {
+    var d []interface{}
+
+		err := r.requestJSON(endpoint, &d)
+		if err != nil{
+      fmt.Println(err)
+		}
+
+    totals[index] = int64(len(d))
+  }
+
+	object_totals.Channels    = totals["channels"]
+	object_totals.Connections = totals["connections"]
+  object_totals.Exchanges   = totals["exchanges"]
+	object_totals.Queues      = totals["queues"]
+
+  return &object_totals, fmt.Errorf("Something went wron in the logic for getOldRabbitCounts method")
 }
 
 func gatherOverview(r *RabbitMQ, acc telegraf.Accumulator, errChan chan error) {
@@ -236,10 +264,15 @@ func gatherOverview(r *RabbitMQ, acc telegraf.Accumulator, errChan chan error) {
 		return
 	}
 
-	if overview.QueueTotals == nil || overview.ObjectTotals == nil || overview.MessageStats == nil {
+  if overview.QueueTotals == nil ||  overview.MessageStats == nil {
 		errChan <- fmt.Errorf("Wrong answer from rabbitmq. Probably auth issue")
 		return
-	}
+  }
+
+  if overview.ObjectTotals == nil {
+    //check for old rabbit
+    overview.ObjectTotals, err = getOldRabbitCounts(r)
+  }
 
 	tags := map[string]string{"url": r.URL}
 	if r.Name != "" {
