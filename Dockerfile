@@ -23,6 +23,7 @@ RUN make
 RUN apk del .build-deps \
 	  && rm -rf $GOPATH/pkg \
 	  && rm -rf $GOPATH/src/github.com/influxdata
+	  && rm -rf $GOPATH/bin/gdm
 
 CMD dockerize \
   $GOPATH/bin/telegraf
